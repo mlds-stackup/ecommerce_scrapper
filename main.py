@@ -19,11 +19,11 @@ def get_product_links_from_categories(category_url, main_url, num_pages):
 
 def product_info(product_url):
     '''
-    identifies various needed information per product to put into store_product function: [id, name, details, rating, store, price, discount, img_url]
-    puts id and soup into comments function
+    identifies various needed information per product to put into store_product function: [id, name, details, rating, store, price, discount, img_url, comments]
     :param product_url: url to product
     '''
     soup = BeautifulSoup(requests.get(product_url).text, "html.parser")
+    print('from: ' + product_url)
     # Get product ID
     id = product_url.split('-')[-1][:-5]
     # Get product name
@@ -31,14 +31,21 @@ def product_info(product_url):
     # Get product details
     details = ""
     for bullet in soup.find('ul', {'class': 'prd-attributesList ui-listBulleted js-short-description'}).findAll('span'):
-        details += "--" + bullet.string
+        # if there is a string
+        if bullet.string:
+            details += "--" + bullet.string
     # Get product rating
     rating = soup.findAll('div', {'class': 'product-card__rating__stars '})
     if len(rating) != 0:
         rating = int(str(rating[0].findAll('div')[1].get('style')).split()[-1][:-1])
     else:
         rating = 0
-    store = soup.find('a', {'class': 'product-fulfillment__item__link product__seller__name__anchor'}).find('span').string.strip()
+    store = soup.findAll('a', {'class': 'product-fulfillment__item__link product__seller__name__anchor'})
+    # when SOLD & FULFILLED BY Lazada no store link
+    if len(store) == 0:
+        store = 'Lazada'
+    else:
+        store = store[0].find('span').string.strip()
     # Get product price
     price = float(soup.find('span', {'id':'product_price'}).string)
     # Get product discount
@@ -70,6 +77,9 @@ def store_product_info(soup, id, name, details, rating, store, price, discount, 
     cnx = mysql.connector.connect(user='root', database='ecommerce_products', password="tiSPARTA3721")
     cursor = cnx.cursor()
     print("Storing the following data\n")
+    details = cnx.converter.escape(details)
+    store = cnx.converter.escape(store)
+    img_url = cnx.converter.escape(img_url)
     print(id, name, details, rating, store, price, discount, img_url)
     add_product = ("INSERT IGNORE INTO product_description"
                    "(product_id, name, store, price, discount, details, picture, rating)"
@@ -81,10 +91,10 @@ def store_product_info(soup, id, name, details, rating, store, price, discount, 
     if cursor.rowcount:
         # Get product comments and store them in comments table
         for review in soup.findAll('li', {'class' : 'ratRev_reviewListRow'}):
-             review_rating = str(review.find('div', {'class':'product-card__rating__stars '}).findAll('div')[1].get('style')).split()[-1][:-1]
-             review_title = review.find('span', {'class' : 'ratRev_revTitle'}).string.strip()
-             review_details = str(review.find('div', {'class':'ratRev_revDetail'}).get_text()).strip()
-             store_comment_info(id, review_rating, review_title, review_details)
+            review_rating = str(review.find('div', {'class':'product-card__rating__stars '}).findAll('div')[1].get('style')).split()[-1][:-1]
+            review_title = cnx.converter.escape(review.find('span', {'class' : 'ratRev_revTitle'}).string.strip())
+            review_details = cnx.converter.escape(str(review.find('div', {'class':'ratRev_revDetail'}).get_text()).strip())
+            store_comment_info(id, review_rating, review_title, review_details)
     cnx.commit()
     cnx.close()
     cursor.close()
@@ -98,7 +108,7 @@ def store_comment_info(id, review_rating, review_title, review_details):
                    "(product_id, comment_rating, title, details)"
                    "VALUES (%s, %s, %s, %s)")
     data_review = (id, review_rating, review_title, review_details)
-    print("Storing the following data\n")
+    print("Storing the following comments\n")
     print(id, review_rating, review_title, review_details)
     cursor.execute(add_review, data_review)
     cnx.commit()
@@ -109,14 +119,16 @@ def store_comment_info(id, review_rating, review_title, review_details):
 
 if __name__ == "__main__":
     main_url = 'http://www.lazada.sg'
-    # categories = ['mobiles-tablets', 'computers-laptops', 'cameras', 'consumer-electronics',
-    #               'womens-fashion', 'men-fashion',
-    #               'large-appliances', 'small-kitchen-appliances', 'kitchen-dining',
-    #               'furniture', 'home-decor', 'housekeeping', 'storage-organisation', 'home-improvement',
-    #               'health-beauty', 'toys-games', 'exercise-fitness']
-    categories = ['mobiles-tablets']
+    categories = ['computers-laptops', 'cameras', 'consumer-electronics',
+                  'womens-fashion', 'men-fashion',
+                  'large-appliances', 'small-kitchen-appliances', 'kitchen-dining',
+                  'furniture', 'home-decor', 'housekeeping', 'storage-organisation', 'home-improvement',
+                  'health-beauty', 'toys-games', 'exercise-fitness']
     for category in categories:
         cat_url = main_url + '/shop-' + category + '/?page='
-        get_product_links_from_categories(cat_url, main_url, 1)
-    product_info('http://www.lazada.sg/oneplus-3t-6gb-ram-64gb-gunmetal-export-10732979.html')
+        get_product_links_from_categories(cat_url, main_url, 2)
 
+# reasons for error: mysql.connector.errors.DatabaseError: 1366 (HY000): Incorrect string value: '\xE2\x9D\xA4'
+#   other language, eg. chinese
+#   emojis eg. ❤
+#   unknown
