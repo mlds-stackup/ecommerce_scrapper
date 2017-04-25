@@ -1,9 +1,9 @@
 import requests
 from bs4 import BeautifulSoup
-import mysql.connector
+import numpy
+import pandas as pd
 
-
-def get_product_links_from_categories(category_url, main_url, num_pages):
+def get_product_links_from_categories(category_url, main_url, num_pages, products):
     '''
     goes through each category and finds product_url to put into per product function
     :param category_url: eg. 'http://lazada.sg/shop-category/?page='
@@ -13,8 +13,9 @@ def get_product_links_from_categories(category_url, main_url, num_pages):
         soup = BeautifulSoup(requests.get(category_url+str(i)).text, "html.parser")
         for link in soup.findAll('a', {'class': 'c-product-card__name'}):
             href = main_url + link.get('href')
-            product_info(href)
-    return
+            products = products.append(product_info(href))
+    print products.info()
+    return products
 
 
 def product_info(product_url):
@@ -25,9 +26,9 @@ def product_info(product_url):
     soup = BeautifulSoup(requests.get(product_url).text, "html.parser")
     print('from: ' + product_url)
     # Get product ID
-    id = product_url.split('-')[-1][:-5]
+    id = product_url.split('-')[-1].split('.')[0]
     # Get product name
-    name = soup.find('h1', {'id' : 'prod_title'}).string.strip()
+    name = soup.find('h1', {'id': 'prod_title'}).string.strip()
     # Get product details
     details = ""
     for bullet in soup.find('ul', {'class': 'prd-attributesList ui-listBulleted js-short-description'}).findAll('span'):
@@ -47,7 +48,7 @@ def product_info(product_url):
     else:
         store = store[0].find('span').string.strip()
     # Get product price
-    price = float(soup.find('span', {'id':'product_price'}).string)
+    price = float(soup.find('span', {'id': 'product_price'}).string)
     # Get product discount
     discount = soup.findAll('span', {'id': 'product_saving_percentage'})
     if len(discount) != 0:
@@ -58,13 +59,12 @@ def product_info(product_url):
     img_url = soup.findAll('img', {'class' : 'itm-img'})[-1].get('src')
 
     # Store data into the product table, returns True if successful
-    store_product_info(soup, id, name, details, rating, store, price, discount, img_url)
-    return
+    return store_product_info(id, name, details, rating, store, price, discount, img_url)
 
 
-def store_product_info(soup, id, name, details, rating, store, price, discount, img_url):
+def store_product_info(id, name, details, rating, store, price, discount, img_url):
     '''
-    takes product info and stores into sql database 'ecommerce products'
+    takes product info and stores into csv file
     :param id: product id
     :param name: product name
     :param details: product details/description
@@ -74,61 +74,25 @@ def store_product_info(soup, id, name, details, rating, store, price, discount, 
     :param discount: discount applied to original price
     :param img_url: url of one of product's images
     '''
-    cnx = mysql.connector.connect(user='root', database='ecommerce_products', password="tiSPARTA3721")
-    cursor = cnx.cursor()
-    print("Storing the following data\n")
-    details = cnx.converter.escape(details)
-    store = cnx.converter.escape(store)
-    img_url = cnx.converter.escape(img_url)
-    print(id, name, details, rating, store, price, discount, img_url)
-    add_product = ("INSERT IGNORE INTO product_description"
-                   "(product_id, name, store, price, discount, details, picture, rating)"
-                   "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)")
-
-    data_product = (id, name, store, price, discount, details, img_url, rating)
-    print("Executing the query...\n")
-    cursor.execute(add_product, data_product)
-    if cursor.rowcount:
-        # Get product comments and store them in comments table
-        for review in soup.findAll('li', {'class' : 'ratRev_reviewListRow'}):
-            review_rating = str(review.find('div', {'class':'product-card__rating__stars '}).findAll('div')[1].get('style')).split()[-1][:-1]
-            review_title = cnx.converter.escape(review.find('span', {'class' : 'ratRev_revTitle'}).string.strip())
-            review_details = cnx.converter.escape(str(review.find('div', {'class':'ratRev_revDetail'}).get_text()).strip())
-            store_comment_info(id, review_rating, review_title, review_details)
-    cnx.commit()
-    cnx.close()
-    cursor.close()
-    return
-
-
-def store_comment_info(id, review_rating, review_title, review_details):
-    cnx = mysql.connector.connect(user='root', database='ecommerce_products', password="tiSPARTA3721")
-    cursor = cnx.cursor()
-    add_review = ("INSERT INTO comments"
-                   "(product_id, comment_rating, title, details)"
-                   "VALUES (%s, %s, %s, %s)")
-    data_review = (id, review_rating, review_title, review_details)
-    print("Storing the following comments\n")
-    print(id, review_rating, review_title, review_details)
-    cursor.execute(add_review, data_review)
-    cnx.commit()
-    cnx.close()
-    cursor.close()
-    return
-
+    print "Storing the relevant data\n"
+    return pd.DataFrame(data={'id': id, 'name': name, 'details': details, 'rating': rating, 'store': store, 'price': price, 'discount': discount, 'img_url': img_url}, index=[0])
 
 if __name__ == "__main__":
     main_url = 'http://www.lazada.sg'
-    categories = ['computers-laptops', 'cameras', 'consumer-electronics',
-                  'womens-fashion', 'men-fashion',
-                  'large-appliances', 'small-kitchen-appliances', 'kitchen-dining',
-                  'furniture', 'home-decor', 'housekeeping', 'storage-organisation', 'home-improvement',
-                  'health-beauty', 'toys-games', 'exercise-fitness']
+    categories = ['computers-laptops']
+    products = pd.DataFrame(data={},
+                            columns=['id', 'name', 'details', 'rating', 'store', 'price', 'discount', 'img_url'])
+    # categories = ['computers-laptops', 'cameras', 'consumer-electronics',
+    #               'womens-fashion', 'men-fashion',
+    #               'large-appliances', 'small-kitchen-appliances', 'kitchen-dining',
+    #               'furniture', 'home-decor', 'housekeeping', 'storage-organisation', 'home-improvement',
+    #               'health-beauty', 'toys-games', 'exercise-fitness']
     for category in categories:
         cat_url = main_url + '/shop-' + category + '/?page='
-        get_product_links_from_categories(cat_url, main_url, 2)
+        products = products.append(get_product_links_from_categories(cat_url, main_url, 1, products))
+    products.to_csv('products.csv')
 
 # reasons for error: mysql.connector.errors.DatabaseError: 1366 (HY000): Incorrect string value: '\xE2\x9D\xA4'
 #   other language, eg. chinese
-#   emojis eg. ❤
+#   emojis eg.
 #   unknown
