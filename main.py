@@ -3,6 +3,11 @@ from bs4 import BeautifulSoup
 import numpy
 import pandas as pd
 
+def csv_writer(p_info):
+    #APPEND IT INTO A CSV FILE
+    pass
+
+
 def get_product_links_from_categories(category_url, main_url, num_pages, products):
     '''
     goes through each category and finds product_url to put into per product function
@@ -13,7 +18,10 @@ def get_product_links_from_categories(category_url, main_url, num_pages, product
         soup = BeautifulSoup(requests.get(category_url+str(i)).text, "html.parser")
         for link in soup.findAll('a', {'class': 'c-product-card__name'}):
             href = main_url + link.get('href')
-            products = products.append(product_info(href))
+            p_info = product_info(href)
+            print p_info
+            csv_writer(p_info)
+            products = products.append(pd.DataFrame(data=p_info, index=[0]))
     print products.info()
     return products
 
@@ -59,23 +67,8 @@ def product_info(product_url):
     img_url = soup.findAll('img', {'class' : 'itm-img'})[-1].get('src')
 
     # Store data into the product table, returns True if successful
-    return store_product_info(id, name, details, rating, store, price, discount, img_url)
+    return {'id': id, 'name': name, 'details': details, 'rating': rating, 'store': store, 'price': price, 'discount': discount, 'img_url': img_url};
 
-
-def store_product_info(id, name, details, rating, store, price, discount, img_url):
-    '''
-    takes product info and stores into csv file
-    :param id: product id
-    :param name: product name
-    :param details: product details/description
-    :param rating: product rating
-    :param store: seller
-    :param price: product final price
-    :param discount: discount applied to original price
-    :param img_url: url of one of product's images
-    '''
-    print "Storing the relevant data\n"
-    return pd.DataFrame(data={'id': id, 'name': name, 'details': details, 'rating': rating, 'store': store, 'price': price, 'discount': discount, 'img_url': img_url}, index=[0])
 
 if __name__ == "__main__":
     main_url = 'http://www.lazada.sg'
